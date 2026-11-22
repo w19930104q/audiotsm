@@ -6,12 +6,9 @@ Pytest configuration
 
 import fnmatch
 import os
-import pytest
 
 
-def pytest_namespace():
-    """Set pytest global variables."""
-    return {'DATA_DIR': os.path.join("tests", "integration", "data")}
+DATA_DIR = os.path.join("tests", "integration", "data")
 
 
 def pytest_addoption(parser):
@@ -26,9 +23,8 @@ def pytest_addoption(parser):
 def get_data_files():
     """Recursively look for wav files in the DATA_DIR directory, and returns
     their paths."""
-    # pylint: disable=no-member
     data_files = []
-    for root, _, filenames in os.walk(pytest.DATA_DIR):
+    for root, _, filenames in os.walk(DATA_DIR):
         for filename in fnmatch.filter(filenames, '*.wav'):
             data_files.append(os.path.join(root, filename))
 

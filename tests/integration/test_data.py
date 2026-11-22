@@ -12,6 +12,8 @@ from audiotsm import ola, wsola, phasevocoder, PhaseLocking
 from audiotsm.io.wav import WavReader, WavWriter
 from audiotsm.io.array import ArrayWriter
 
+from conftest import DATA_DIR
+
 EXAMPLES_DIR = os.path.join("build", "ghpages", "examples")
 
 
@@ -41,9 +43,7 @@ def test_data(data_file, speed, tsm_name, save):
 
         # Create the writer
         if save:
-            # pylint: disable=no-member
-            rel_path = os.path.relpath(data_file, pytest.DATA_DIR)
-            # pylint: enable=no-member
+            rel_path = os.path.relpath(data_file, DATA_DIR)
 
             # Copy original file to "orig" directory
             orig_file = os.path.join(EXAMPLES_DIR, "orig", rel_path)

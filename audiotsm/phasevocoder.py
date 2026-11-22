@@ -105,54 +105,68 @@ class PhaseVocoderConverter(Converter):
 
     def convert_frame(self, frame):
         # pylint: disable=arguments-differ
-        for k in range(0, self._channels):
-            # Compute the FFT of the analysis frame
-            stft = np.fft.rfft(frame[k])
-            amplitude = np.abs(stft)
-            phase = np.angle(stft)
-            del stft
+        # Compute the FFT of the analysis frames of all the channels
+        stft = np.fft.rfft(frame)
+        amplitude = np.abs(stft)
+        phase = np.angle(stft)
+        del stft
 
-            peaks = self._find_peaks(amplitude)
-            closest_peak = get_closest_peaks(peaks)
+        # Find the peaks on the sum of the amplitudes of all the channels,
+        # so that the same peaks (and the same phase increments) are used
+        # for every channel. This preserves the phase relations and the
+        # relative delays between the channels.
+        peaks = self._find_peaks(amplitude.sum(axis=0))
+        closest_peak = get_closest_peaks(peaks)
 
-            if self._first:
-                # Leave the first frame unchanged
-                self._output_phase[k, :] = phase
-            else:
-                # Compute the phase increment
-                self._buffer[peaks] = (
-                    phase[peaks] - self._previous_phase[k, peaks] -
-                    self._analysis_hop * self._center_frequency[peaks]
-                )
+        if self._first:
+            # Leave the first frame unchanged
+            self._output_phase[:, :] = phase
+        else:
+            # Compute the phase increments on a single reference channel
+            # (the one with the highest amplitude at each peak), so that
+            # the same increment can be applied to every channel.
+            reference = np.argmax(amplitude[:, peaks], axis=0)
+            peak_index = np.arange(reference.size)
+            reference_phase = phase[:, peaks][reference, peak_index]
+            reference_previous_phase = (
+                self._previous_phase[:, peaks][reference, peak_index])
 
-                # Unwrap the phase increment
-                self._buffer[peaks] += np.pi
-                self._buffer[peaks] %= 2 * np.pi
-                self._buffer[peaks] -= np.pi
+            self._buffer[peaks] = (
+                reference_phase - reference_previous_phase -
+                self._analysis_hop * self._center_frequency[peaks]
+            )
 
-                # Compute the instantaneous frequency (in the same buffer,
-                # since the phase increment wont be required after that)
-                self._buffer[peaks] /= self._analysis_hop
-                self._buffer[peaks] += self._center_frequency[peaks]
+            # Unwrap the phase increment
+            self._buffer[peaks] += np.pi
+            self._buffer[peaks] %= 2 * np.pi
+            self._buffer[peaks] -= np.pi
 
-                self._buffer[peaks] *= self._synthesis_hop
-                self._output_phase[k][peaks] += self._buffer[peaks]
+            # Compute the instantaneous frequency (in the same buffer,
+            # since the phase increment wont be required after that)
+            self._buffer[peaks] /= self._analysis_hop
+            self._buffer[peaks] += self._center_frequency[peaks]
 
+            self._buffer[peaks] *= self._synthesis_hop
+
+            # Apply the same phase increment to every channel
+            self._output_phase[:, peaks] += self._buffer[peaks]
+
+            for k in range(0, self._channels):
                 # Phase locking
                 self._output_phase[k] = (
                     self._output_phase[k][closest_peak] +
-                    phase - phase[closest_peak]
+                    phase[k] - phase[k][closest_peak]
                 )
 
                 # Compute the new stft
-                output_stft = amplitude * np.exp(1j * self._output_phase[k])
+                output_stft = amplitude[k] * np.exp(1j * self._output_phase[k])
 
                 frame[k, :] = np.fft.irfft(output_stft).real
 
-            # Save the phase for the next analysis frame
-            self._previous_phase[k, :] = phase
-            del phase
-            del amplitude
+        # Save the phase for the next analysis frame
+        self._previous_phase[:, :] = phase
+        del phase
+        del amplitude
 
         self._first = False
 
