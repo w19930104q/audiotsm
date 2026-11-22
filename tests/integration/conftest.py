@@ -9,9 +9,9 @@ import os
 import pytest
 
 
-def pytest_namespace():
-    """Set pytest global variables."""
-    return {'DATA_DIR': os.path.join("tests", "integration", "data")}
+# Directory containing the test data, exposed as a pytest global variable
+# (this replaces the pytest_namespace hook, which was removed from pytest).
+pytest.DATA_DIR = os.path.join("tests", "integration", "data")
 
 
 def pytest_addoption(parser):

@@ -188,10 +188,16 @@ class CBuffer(object):
             # There is not enough space to copy the whole buffer, it has to be
             # split into two parts, one of which will be copied at the end of
             # _data, and the other at the beginning.
-            end -= self._max_length
-
             n = reader.read(self._data[:, start:])
-            n += reader.read(self._data[:, :end])
+
+            if n == self._max_length - start:
+                # The first part was filled entirely, the rest of the data can
+                # be copied at the beginning of _data. If the reader returned
+                # less data than requested (which may happen with live
+                # streams), the second part of the buffer should be left
+                # untouched: it will be filled by a later call to read_from.
+                end -= self._max_length
+                n += reader.read(self._data[:, :end])
 
         self._length += n
         self._ready = self._length
@@ -343,9 +349,16 @@ class CBuffer(object):
         if end <= self._max_length:
             n = writer.write(self._data[:, start:end])
         else:
-            end -= self._max_length
             n = writer.write(self._data[:, start:])
-            n += writer.write(self._data[:, :end])
+
+            if n == self._max_length - start:
+                # The first part was written entirely, the rest of the data
+                # can be read from the beginning of _data. If the writer
+                # accepted less data than requested, the second part of the
+                # buffer should be left untouched: it will be written by a
+                # later call to write_to.
+                end -= self._max_length
+                n += writer.write(self._data[:, :end])
 
         self.remove(n)
         return n

@@ -6,7 +6,7 @@ Tests for the audiotsm.utils.cbuffer package.
 
 import pytest
 import numpy as np
-from numpy.testing import assert_almost_equal
+from numpy.testing import assert_almost_equal, assert_array_equal
 
 from audiotsm.io.array import ArrayReader, FixedArrayWriter
 from audiotsm.utils import CBuffer
@@ -199,3 +199,46 @@ def test_cbuffer_write_to(in_buffer, out_buffer, out_n, remaining_data):
     assert n == out_n
     assert_almost_equal(read_buffer, out_buffer)
     assert_almost_equal(in_buffer.to_array(), remaining_data)
+
+
+class ChunkedArrayReader(ArrayReader):
+    """An :class:`ArrayReader` that returns at most ``chunk`` samples per
+    :func:`read` call, mimicking a live stream from which only a limited
+    amount of data is available at a time."""
+    def __init__(self, data, chunk):
+        super().__init__(data)
+        self._chunk = chunk
+
+    def read(self, buffer):
+        n = min(buffer.shape[1], self._chunk)
+        return super().read(buffer[:, :n])
+
+
+@pytest.mark.parametrize("max_length, chunk", [
+    (4, 1), (4, 2), (4, 3), (5, 2), (5, 3), (7, 3), (8, 5),
+])
+def test_cbuffer_read_from_short_reads(max_length, chunk):
+    """Run tests for the CBuffer.read_from method with a reader that returns
+    less data than requested (as live stream readers do).
+
+    The samples should be stored contiguously, in order, even when the write
+    position wraps around the circular buffer in the middle of a read."""
+    buffer = CBuffer(1, max_length)
+
+    # Rotate the buffer so that the write position is not 0
+    buffer.write(np.ones((1, 1), dtype=np.float32))
+    buffer.remove(1)
+
+    data = np.arange(2 * max_length, dtype=np.float32).reshape((1, -1))
+    reader = ChunkedArrayReader(data, chunk)
+
+    out = []
+    drained = np.empty((1, max_length), dtype=np.float32)
+    while not reader.empty:
+        buffer.read_from(reader)
+
+        # Drain the buffer
+        n = buffer.read(drained)
+        out.append(drained[:, :n].copy())
+
+    assert_array_equal(np.concatenate(out, axis=1), data)
